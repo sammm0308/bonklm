@@ -1,0 +1,83 @@
+{
+  "name": "@blackunicorn/bonklm",
+  "version": "0.2.0",
+  "description": "BonkLM - LLM Security Guardrails with Interactive Setup Wizard",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "bonklm": "./dist/bin/run.js",
+    "cli": "bin/run.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./validators": {
+      "import": "./dist/validators/index.js",
+      "types": "./dist/validators/index.d.ts"
+    },
+    "./guards": {
+      "import": "./dist/guards/index.js",
+      "types": "./dist/guards/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    },
+    "./common": {
+      "import": "./dist/common/index.js",
+      "types": "./dist/common/index.d.ts"
+    },
+    "./core/connector-utils": {
+      "import": "./dist/connector-utils/index.js",
+      "types": "./dist/connector-utils/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && sed -i '' \"s|from '../cli/|from './cli/|g\" dist/bin/run.js && chmod +x dist/bin/run.js",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "llm",
+    "security",
+    "guardrails",
+    "prompt-injection",
+    "jailbreak",
+    "ai-safety",
+    "cli",
+    "wizard"
+  ],
+  "author": "Black Unicorn <security@blackunicorn.tech>",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.8.2",
+    "commander": "^12.1.0",
+    "dotenv": "^17.3.1",
+    "lru-cache": "^11.2.6",
+    "secure-json-parse": "^2.5.0",
+    "which": "^4.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/which": "^3.0.4",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

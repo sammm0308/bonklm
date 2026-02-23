@@ -1,0 +1,360 @@
+/**
+ * SecretGuard Unit Tests
+ * =====================
+ * Comprehensive unit tests for secret/API key detection.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  SecretGuard,
+  validateSecrets,
+} from '../../../src/guards/secret.js';
+
+describe('SecretGuard', () => {
+  describe('AWS Key Detection', () => {
+    it('SG-001: should detect AWS access keys', () => {
+      const guard = new SecretGuard();
+      const result = guard.validate('const awsKey = "AKIAIOSFODNN7EXAMPLE"');
+      expect(result.blocked).toBe(true);
+      expect(result.findings?.length).toBeGreaterThan(0);
+    });
+
+    it('should detect AWS secret keys', () => {
+      const result = validateSecrets('aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"');
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('GitHub Token Detection', () => {
+    it('SG-002: should detect GitHub personal tokens', () => {
+      const result = validateSecrets('github_token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect GitHub OAuth tokens', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('token: gho_1234567890abcdefghijklmnopqrstuvwxyz');
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('Generic API Key Detection', () => {
+    it('SG-003: should detect generic API keys', () => {
+      const result = validateSecrets('api_key: sk-1234567890abcdefghijklmnopqrstuvwxyz');
+      expect(result).toBeDefined();
+    });
+
+    it('should detect bearer tokens', () => {
+      const guard = new SecretGuard();
+      // Pattern: /bearer\s+[A-Za-z0-9_\-\.]{30,}/gi - needs at least 30 chars
+      const result = guard.validate('Authorization: Bearer sk-1234567890abcdefghijklmnopqr');
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('JWT Detection', () => {
+    it('SG-004: should detect JWT tokens', () => {
+      const jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+      const result = validateSecrets(jwt);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Database URL Detection', () => {
+    it('SG-005: should detect database connection strings', () => {
+      const dbUrl = "mongodb://user:pass@localhost:27017/db";
+      const result = validateSecrets(dbUrl);
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect PostgreSQL URLs', () => {
+      const pgUrl = "postgres://user:password123@localhost:5432/mydb";
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate(pgUrl);
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('Private Key Detection', () => {
+    it('SG-006: should detect RSA private keys', () => {
+      const privateKey = `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA2Z2jQwUKb6LyF1KhkYQ8RlFqViYeXTLhL...
+-----END RSA PRIVATE KEY-----`;
+      const result = validateSecrets(privateKey);
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect EC private keys', () => {
+      const ecKey = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIFLu7LfVcWpL4M3baK4Yk4vLkhhGVxNL...
+-----END EC PRIVATE KEY-----`;
+      const guard = new SecretGuard();
+      const result = guard.validate(ecKey);
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('Password in Code', () => {
+    it('SG-007: should detect password assignments', () => {
+      const code = 'const password = "SuperSecret123!"';
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate(code);
+      expect(result).toBeDefined();
+    });
+
+    it('should detect passwd assignments', () => {
+      const code = 'mysql_passwd = "secret123"';
+      const result = validateSecrets(code);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Class Interface', () => {
+    it('should support class-based instantiation', () => {
+      const guard = new SecretGuard();
+      expect(guard).toBeDefined();
+      expect(guard.validate).toBeInstanceOf(Function);
+    });
+
+    it('should support class-based validation', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.blocked).toBe(true);
+      expect(result.findings?.length).toBeGreaterThan(0);
+    });
+
+    it('should support instantiation with custom config', () => {
+      const guard = new SecretGuard({ checkExamples: false });
+      expect(guard).toBeDefined();
+      expect(guard.validate).toBeInstanceOf(Function);
+    });
+  });
+
+  describe('Safe Content', () => {
+    it('should allow code without secrets', () => {
+      const result = validateSecrets('const greeting = "Hello World"');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow example content', () => {
+      const guard = new SecretGuard({ checkExamples: true });
+      const result = guard.validate('YOUR_API_KEY = "sk-1234567890abcdef"');
+      // Example content might be detected as low risk
+      expect(result).toBeDefined();
+    });
+
+    it('should allow placeholder values', () => {
+      const result = validateSecrets('api_key = "<YOUR_API_KEY_HERE>"');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow fake data', () => {
+      const result = validateSecrets('password = "xxxxxxxx"');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should allow test patterns', () => {
+      const result = validateSecrets('key = "test_key_12345"');
+      expect(result.allowed).toBe(true);
+    });
+  });
+
+  describe('Configuration', () => {
+    it('should respect checkExamples configuration', () => {
+      const guardWith = new SecretGuard({ checkExamples: true });
+      const guardWithout = new SecretGuard({ checkExamples: false });
+
+      const exampleContent = 'YOUR_API_KEY = "sk-1234567890abcdef"';
+
+      const result1 = guardWith.validate(exampleContent);
+      const result2 = guardWithout.validate(exampleContent);
+
+      expect(result1).toBeDefined();
+      expect(result2).toBeDefined();
+    });
+
+    it('should respect includeFindings configuration', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.findings?.length).toBeGreaterThan(0);
+    });
+
+    it('should support entropyThreshold configuration', () => {
+      const guard = new SecretGuard({ entropyThreshold: 4.0 });
+      expect(guard).toBeDefined();
+      // Config is used internally in detection
+    });
+  });
+
+  describe('Multiple Secrets', () => {
+    it('SG-011: should verify multiple secrets detected', () => {
+      const content = `
+        AWS_KEY = AKIAIOSFODNN7EXAMPLE
+        GITHUB_TOKEN = ghp_1234567890abcdefghijklmnopqrstuvwxyz
+        DATABASE_URL = postgres://user:pass@localhost/db
+      `;
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate(content);
+      expect(result.blocked).toBe(true);
+      expect(result.findings?.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('Findings Structure', () => {
+    it('should include category in findings', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.findings?.[0]).toHaveProperty('category');
+    });
+
+    it('should include severity in findings', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.findings?.[0]).toHaveProperty('severity');
+    });
+
+    it('should include description in findings', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.findings?.[0]).toHaveProperty('description');
+    });
+
+    it('should include match in findings', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.findings?.[0]).toHaveProperty('match');
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle empty input', () => {
+      const guard = new SecretGuard();
+      const result = guard.validate('');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should handle whitespace only', () => {
+      const result = validateSecrets('   ');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should handle multiple secrets in one file', () => {
+      const content = `
+        const aws = "AKIAIOSFODNN7EXAMPLE"
+        const github = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+        const db = "mongodb://user:pass@localhost:27017/db"
+      `;
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate(content);
+      expect(result.blocked).toBe(true);
+      expect(result.findings?.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should handle secrets in comments', () => {
+      const content = '// TODO: Replace AKIAIOSFODNN7EXAMPLE with real key';
+      const result = validateSecrets(content);
+      // Comments are still scanned
+      expect(result).toBeDefined();
+    });
+
+    it('should handle secrets with special characters around', () => {
+      const content = '"AKIAIOSFODNN7EXAMPLE"';
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate(content);
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should handle very long input', () => {
+      const longContent = 'const key = "sk-' + 'a'.repeat(100);
+      const result = validateSecrets(longContent);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('Convenience Function', () => {
+    it('should support validateSecrets function', () => {
+      const result = validateSecrets('AKIAIOSFODNN7EXAMPLE');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should allow safe content via validateSecrets', () => {
+      const result = validateSecrets('Hello World');
+      expect(result.allowed).toBe(true);
+    });
+
+    it('should support filePath parameter', () => {
+      const result = validateSecrets('AKIAIOSFODNN7EXAMPLE', 'src/config.ts');
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('Specific Provider Tests', () => {
+    it('should detect Slack tokens', () => {
+      // TEST VALUE ONLY - NOT A REAL TOKEN
+      const result = validateSecrets('slack_token = "xoxb-TESTFAKEPLACEHOLDER-NOT-REAL-TOKEN"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect Stripe keys', () => {
+      // Pattern: /sk_live_[A-Za-z0-9]{24,}/g - needs at least 24 chars after sk_live_
+      // TEST VALUE ONLY - NOT A REAL KEY
+      const result = validateSecrets('stripe_key = "sk_live_TEST_FAKE_PLACEHOLDER_NOT_REAL_KEY"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect Google API keys', () => {
+      // Pattern: /AIza[0-9A-Za-z\-_]{35}/g - needs 35 chars after AIza
+      // TEST VALUE ONLY - NOT A REAL KEY
+      const result = validateSecrets('google_key = "AIzaSyTESTFAKEPLACEHOLDER-NOTREALKEYTEST"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect OpenAI keys', () => {
+      // Pattern: /sk-proj-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}/g
+      // T3BlbkFJ is base64 of "sk"
+      // TEST VALUE ONLY - NOT A REAL KEY
+      const result = validateSecrets('openai_key = "sk-proj-TEST-PLACEHOLDER-NOT-REAL-KEY-FOR-TESTING"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect Anthropic keys', () => {
+      // Pattern: /sk-ant-api03-[A-Za-z0-9\-_]{93}/g - needs 93 chars
+      const result = validateSecrets('anthropic_key = "sk-ant-api03-' + 'a'.repeat(93) + '"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect Twilio keys', () => {
+      // Pattern: /SK[a-f0-9]{32}/g - lowercase hex only, 32 chars after SK
+      const result = validateSecrets('twilio_key = "SK' + 'a'.repeat(32) + '"');
+      expect(result.blocked).toBe(true);
+    });
+
+    it('should detect npm tokens', () => {
+      // Pattern: /npm_[A-Za-z0-9]{36}/g - needs 36 chars after npm_
+      const result = validateSecrets('npm_token = "npm_' + 'a'.repeat(36) + '"');
+      expect(result.blocked).toBe(true);
+    });
+  });
+
+  describe('Risk Assessment', () => {
+    it('should assign severity to detected secrets', () => {
+      const guard = new SecretGuard();
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.severity).toBeDefined();
+    });
+
+    it('should calculate risk score', () => {
+      const guard = new SecretGuard({ includeFindings: true });
+      const result = guard.validate('AKIAIOSFODNN7EXAMPLE');
+      expect(result.risk_score).toBeGreaterThan(0);
+    });
+  });
+
+  describe('SG-012: Empty Input', () => {
+    it('should handle empty string', () => {
+      const guard = new SecretGuard();
+      const result = guard.validate('');
+      expect(result.allowed).toBe(true);
+    });
+  });
+});

@@ -1,0 +1,226 @@
+# @blackunicorn/bonklm-mastra
+
+[![npm version](https://badge.fury.io/js/%40blackunicorn%2Fbonklm-mastra.svg)](https://www.npmjs.com/package/@blackunicorn/bonklm-mastra)
+[![License: MIT](https://badge.fury.io/js/%40blackunicorn%2Fbonklm-mastra.svg)](https://opensource.org/licenses/MIT)
+
+> Mastra framework connector for BonkLM
+
+## Features
+
+- 🔒 **Input Validation** - Validate agent inputs before execution
+- 🔒 **Output Validation** - Validate agent outputs after execution
+- 🛠️ **Tool Call Protection** - Validate tool calls and results (SEC-005)
+- 📊 **Structured Content** - Handle complex message formats (SEC-006)
+- ⏱️ **Timeout Protection** - Validation timeout with AbortController (SEC-008)
+- 📏 **Size Limits** - Configurable content and buffer size limits (SEC-003, SEC-010)
+- 🚫 **Production Mode** - Generic error messages in production (SEC-007)
+- 🌊 **Streaming Support** - Incremental stream validation (SEC-002)
+
+## Installation
+
+```bash
+npm install @blackunicorn/bonklm-mastra @blackunicorn/bonklm
+```
+
+## Quick Start
+
+```typescript
+import { createGuardedMastra } from '@blackunicorn/bonklm-mastra';
+import { PromptInjectionValidator } from '@blackunicorn/bonklm';
+import { Mastra } from '@mastra/core';
+
+// Create the guardrail integration
+const guardrails = createGuardedMastra({
+  validators: [new PromptInjectionValidator()],
+  validateAgentInput: true,
+  validateAgentOutput: true,
+});
+
+// Use with Mastra agents
+const mastra = new Mastra({
+  // ... your Mastra configuration
+});
+
+// Apply guardrails to agent execution
+const agent = mastra.getAgent('my-agent');
+
+// Before execution
+const beforeResult = await guardrails.beforeAgentExecution([
+  { role: 'user', content: userInput }
+]);
+
+if (!beforeResult.allowed) {
+  throw new Error(beforeResult.blockedReason);
+}
+
+// Execute agent
+const response = await agent.execute(userInput);
+
+// After execution
+const afterResult = await guardrails.afterAgentExecution(response);
+if (!afterResult.allowed) {
+  // Handle blocked response
+  return '[Content filtered]';
+}
+```
+
+## Using wrapAgent (Convenience Wrapper)
+
+For automatic guardrail application, use the `wrapAgent` function:
+
+```typescript
+import { wrapAgent } from '@blackunicorn/bonklm-mastra';
+import { PromptInjectionValidator, JailbreakValidator } from '@blackunicorn/bonklm';
+
+const guardedAgent = wrapAgent(myAgent, {
+  validators: [
+    new PromptInjectionValidator(),
+    new JailbreakValidator()
+  ],
+  validateAgentInput: true,
+  validateAgentOutput: true,
+});
+
+// Use normally - guardrails are applied automatically
+const result = await guardedAgent.execute('Hello, how can you help?');
+```
+
+## Configuration Options
+
+```typescript
+interface GuardedMastraOptions {
+  // Validators and guards
+  validators?: Validator[];
+  guards?: Guard[];
+
+  // Logging
+  logger?: Logger;
+
+  // Feature toggles
+  validateAgentInput?: boolean;      // Default: true
+  validateAgentOutput?: boolean;     // Default: true
+  validateToolCalls?: boolean;       // Default: true
+  validateToolResults?: boolean;     // Default: true
+
+  // Streaming
+  validateStreaming?: boolean;       // Default: false
+  streamingMode?: 'incremental' | 'buffer';  // Default: 'incremental'
+
+  // Security limits
+  maxStreamBufferSize?: number;      // Default: 1MB
+  maxContentLength?: number;         // Default: 100KB
+
+  // Production mode
+  productionMode?: boolean;          // Default: NODE_ENV === 'production'
+
+  // Timeout
+  validationTimeout?: number;        // Default: 30000ms (30s)
+
+  // Callbacks
+  onBlocked?: (result, context?) => void;
+  onStreamBlocked?: (accumulated, context?) => void;
+  onToolCallBlocked?: (toolCall, result, context?) => void;
+}
+```
+
+## Streaming Validation
+
+For streaming responses, use the stream validator:
+
+```typescript
+const guardrails = createGuardedMastra({
+  validators: [new PromptInjectionValidator()],
+  validateStreaming: true,
+  streamingMode: 'incremental',
+});
+
+const validator = guardrails.createStreamValidator();
+
+try {
+  for await (const chunk of agentStream) {
+    const validated = await validator(chunk);
+    if (validated) {
+      process.stdout.write(validated);
+    }
+  }
+} catch (error) {
+  if (error.name === 'StreamValidationError') {
+    console.error('Stream blocked:', error.reason);
+  }
+}
+```
+
+## Tool Call Validation
+
+Tool calls are validated to prevent injection attacks:
+
+```typescript
+const toolCall: MastraToolCall = {
+  id: 'tool-123',
+  name: 'search',
+  input: { query: userInput },
+};
+
+const result = await guardrails.validateToolCall(toolCall);
+if (!result.allowed) {
+  // Block the tool call
+  return;
+}
+
+// Execute tool call
+const toolResult = await executeTool(toolCall);
+```
+
+## Security Features
+
+### SEC-001: Path Traversal Protection
+Path normalization using `path.normalize()` for any path-based operations.
+
+### SEC-002: Stream Validation
+Buffer-and-validate-before-send pattern with early termination on violations.
+
+### SEC-003: Buffer Overflow Protection
+Configurable max buffer size (default 1MB) to prevent DoS attacks.
+
+### SEC-005: Tool Call Injection
+Schema validation for tool arguments to prevent injection attacks.
+
+### SEC-006: Structured Content Handling
+Proper extraction of text from complex message formats (arrays, images, etc.).
+
+### SEC-007: Production Mode
+Generic error messages in production to avoid information leakage.
+
+### SEC-008: Validation Timeout
+AbortController-based timeout to prevent hanging on slow inputs.
+
+### SEC-010: Request Size Limits
+Configurable max content length to prevent DoS via large inputs.
+
+## API Reference
+
+### `createGuardedMastra(options)`
+
+Creates a guardrail integration object with hook functions.
+
+**Returns:**
+- `beforeAgentExecution(messages, context?)` - Validate before agent execution
+- `afterAgentExecution(response, context?)` - Validate after agent execution
+- `validateToolCall(toolCall, context?)` - Validate tool call inputs
+- `validateToolResult(result, toolCall, context?)` - Validate tool results
+- `createStreamValidator(context?)` - Create a stream validator function
+
+### `wrapAgent(agent, options)`
+
+Wraps a Mastra agent with automatic guardrail hooks.
+
+**Returns:** A wrapped agent with the same interface as the original.
+
+## License
+
+MIT
+
+## Support
+
+- GitHub Issues: https://github.com/blackunicorn/bonklm/issues
+- Documentation: https://github.com/blackunicorn/bonklm

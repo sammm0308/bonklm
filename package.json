@@ -1,0 +1,61 @@
+{
+  "name": "@blackunicorn-bonklm",
+  "version": "0.2.0",
+  "description": "BonkLM - LLM Security Guardrails for prompt injection, jailbreak, and content validation",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=packages/core",
+    "test": "npm run test --workspace=packages/core",
+    "benchmark": "vitest bench --config vitest.config.ts team/performance/benchmark.bench.ts",
+    "lint": "npm run lint --workspace=packages/core",
+    "format": "prettier --write \"**/*.{ts,js,mjs,cjs,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,mjs,cjs,json,md,yaml,yml}\"",
+    "clean": "npm run clean --workspace=packages/core",
+    "dev": "npm run dev --workspace=packages/core",
+    "uat": "tsx team/uat/run-uat.ts"
+  },
+  "keywords": [
+    "llm",
+    "security",
+    "guardrails",
+    "prompt-injection",
+    "jailbreak",
+    "ai-safety",
+    "validation",
+    "openclaw"
+  ],
+  "author": "Black Unicorn <security@blackunicorn.tech>",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.11.0",
+    "@vitest/coverage-istanbul": "^4.0.18",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-n": "^17.24.0",
+    "eslint-plugin-unicorn": "^63.0.0",
+    "eslint-plugin-yml": "^3.2.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.56.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blackunicorn/bonklm"
+  },
+  "bugs": {
+    "url": "https://github.com/blackunicorn/bonklm/issues"
+  },
+  "homepage": "https://github.com/blackunicorn/bonklm#readme",
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}

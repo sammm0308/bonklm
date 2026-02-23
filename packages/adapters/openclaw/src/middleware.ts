@@ -1,0 +1,297 @@
+/**
+ * OpenClaw Adapter - Middleware
+ * ===============================
+ * Integration layer for using BonkLM with OpenClaw.
+ *
+ * This middleware provides pre-action hooks for OpenClaw's agent system
+ * to validate user input and tool execution against prompt injection,
+ * jailbreak, and content security threats.
+ */
+
+import type {
+  PromptInjectionConfig,
+  SecretGuardConfig,
+} from '@blackunicorn-llmguardrails/core';
+import {
+  PromptInjectionValidator,
+  SecretGuard,
+  createResult,
+  Severity,
+  type GuardrailResult,
+} from '@blackunicorn-llmguardrails/core';
+import type {
+  OpenClawMessageContext,
+  OpenClawToolContext,
+  OpenClawGuardrailResult,
+  OpenClawAdapterConfig,
+} from './types.js';
+
+const DEFAULT_CONFIG: Required<Omit<OpenClawAdapterConfig, 'logger'>> = {
+  validateMessages: true,
+  validateTools: true,
+  blockThreshold: 'warning',
+  logResults: true,
+};
+
+/**
+ * Simple logger implementation
+ */
+class ConsoleLogger {
+  info(message: string, context?: Record<string, unknown>): void {
+    console.log(`[INFO] ${message}`, context || '');
+  }
+  warn(message: string, context?: Record<string, unknown>): void {
+    console.warn(`[WARN] ${message}`, context || '');
+  }
+  error(message: string, context?: Record<string, unknown>): void {
+    console.error(`[ERROR] ${message}`, context || '');
+  }
+}
+
+/**
+ * OpenClaw Guardrails Middleware
+ *
+ * Integrates with OpenClaw's hook system to provide security validation
+ * for messages and tool executions.
+ */
+export class OpenClawGuardrailsMiddleware {
+  private readonly config: Required<OpenClawAdapterConfig>;
+  private readonly logger: ConsoleLogger;
+  private readonly promptInjectionValidator: PromptInjectionValidator;
+  private readonly secretGuard: SecretGuard;
+
+  constructor(
+    config: OpenClawAdapterConfig = {},
+    validators?: {
+      promptInjection?: PromptInjectionConfig;
+      secret?: SecretGuardConfig;
+    }
+  ) {
+    this.config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+      logger: config.logger ?? new ConsoleLogger(),
+    } as Required<OpenClawAdapterConfig>;
+    this.logger = this.config.logger as unknown as ConsoleLogger;
+
+    this.promptInjectionValidator = new PromptInjectionValidator(validators?.promptInjection);
+    this.secretGuard = new SecretGuard(validators?.secret);
+  }
+
+  /**
+   * Validate an OpenClaw message before processing
+   */
+  async validateMessage(context: OpenClawMessageContext): Promise<OpenClawGuardrailResult> {
+    if (!this.config.validateMessages) {
+      return {
+        ...createResult(true),
+        allowed: true,
+        originalContent: context.content,
+      };
+    }
+
+    this.logger.info('Validating OpenClaw message', {
+      messageId: context.messageId,
+      sessionId: context.sessionId,
+      channel: context.channel,
+    });
+
+    // Run validators
+    const promptInjectionResult = this.promptInjectionValidator.validate(context.content);
+    const secretResult = this.secretGuard.validate(context.content);
+
+    // Merge results
+    const combined = this.mergeResults([promptInjectionResult, secretResult]);
+
+    const result: OpenClawGuardrailResult = {
+      ...combined,
+      allowed: combined.allowed,
+      blockedBy: !combined.allowed ? this.getBlockingValidator([promptInjectionResult, secretResult]) : undefined,
+      originalContent: context.content,
+    };
+
+    if (this.config.logResults) {
+      if (result.allowed) {
+        this.logger.info('Message validation passed', {
+          messageId: context.messageId,
+          findings_count: result.findings.length,
+        });
+      } else {
+        this.logger.warn('Message validation blocked', {
+          messageId: context.messageId,
+          blocked_by: result.blockedBy,
+          severity: result.severity,
+          findings_count: result.findings.length,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate an OpenClaw tool execution
+   */
+  async validateTool(context: OpenClawToolContext): Promise<OpenClawGuardrailResult> {
+    if (!this.config.validateTools) {
+      return {
+        ...createResult(true),
+        allowed: true,
+      };
+    }
+
+    this.logger.info('Validating OpenClaw tool execution', {
+      toolName: context.toolName,
+      sessionId: context.sessionId,
+    });
+
+    // Get content from tool input
+    const content = this.extractContentFromToolInput(context.toolInput);
+
+    if (!content) {
+      return {
+        ...createResult(true),
+        allowed: true,
+      };
+    }
+
+    // Run validators
+    const promptInjectionResult = this.promptInjectionValidator.validate(content);
+    const secretResult = this.secretGuard.validate(content);
+
+    // Merge results
+    const combined = this.mergeResults([promptInjectionResult, secretResult]);
+
+    const result: OpenClawGuardrailResult = {
+      ...combined,
+      allowed: combined.allowed,
+      blockedBy: !combined.allowed ? this.getBlockingValidator([promptInjectionResult, secretResult]) : undefined,
+    };
+
+    if (this.config.logResults) {
+      if (result.allowed) {
+        this.logger.info('Tool validation passed', {
+          toolName: context.toolName,
+          findings_count: result.findings.length,
+        });
+      } else {
+        this.logger.warn('Tool validation blocked', {
+          toolName: context.toolName,
+          blocked_by: result.blockedBy,
+          severity: result.severity,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Create an OpenClaw pre-action hook function
+   * This can be registered with OpenClaw's hook system
+   */
+  createPreActionHook() {
+    return async (context: OpenClawMessageContext | OpenClawToolContext): Promise<{
+      allowed: boolean;
+      blockedBy?: string;
+      reason?: string;
+    }> => {
+      const result = await this.validate(
+        'messageId' in context ? context : (context as unknown as OpenClawMessageContext)
+      );
+
+      return {
+        allowed: result.allowed,
+        blockedBy: result.blockedBy,
+        reason: result.findings[0]?.description,
+      };
+    };
+  }
+
+  /**
+   * Generic validate method that routes to the appropriate validator
+   */
+  private async validate(context: OpenClawMessageContext): Promise<OpenClawGuardrailResult>;
+  private async validate(context: OpenClawToolContext): Promise<OpenClawGuardrailResult>;
+  private async validate(
+    context: OpenClawMessageContext | OpenClawToolContext
+  ): Promise<OpenClawGuardrailResult> {
+    if ('content' in context) {
+      return this.validateMessage(context as OpenClawMessageContext);
+    } else {
+      return this.validateTool(context as OpenClawToolContext);
+    }
+  }
+
+  /**
+   * Merge multiple validation results
+   */
+  private mergeResults(results: GuardrailResult[]): GuardrailResult {
+    const allFindings = results.flatMap((r) => r.findings);
+    results.reduce((sum, r) => sum + r.risk_score, 0);
+    const anyBlocked = results.some((r) => r.blocked);
+
+    const severityOrder: Record<Severity, number> = {
+      [Severity.INFO]: 0,
+      [Severity.WARNING]: 1,
+      [Severity.BLOCKED]: 2,
+      [Severity.CRITICAL]: 3,
+    };
+
+    const maxSeverity = results.reduce((max, r) => {
+      return severityOrder[r.severity] > severityOrder[max] ? r.severity : max;
+    }, Severity.INFO);
+
+    return createResult(
+      !anyBlocked,
+      maxSeverity,
+      allFindings
+    );
+  }
+
+  /**
+   * Get the name of the validator that blocked the request
+   */
+  private getBlockingValidator(results: GuardrailResult[]): string {
+    for (const result of results) {
+      if (result.blocked) {
+        return 'validator';
+      }
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Extract content from tool input
+   */
+  private extractContentFromToolInput(toolInput: Record<string, unknown>): string {
+    const fields = ['content', 'prompt', 'text', 'query', 'message', 'input'];
+
+    for (const field of fields) {
+      const value = toolInput[field];
+      if (typeof value === 'string') {
+        return value;
+      }
+    }
+
+    return JSON.stringify(toolInput);
+  }
+}
+
+/**
+ * Create a configured middleware instance
+ */
+export function createOpenClawGuardrails(
+  config?: OpenClawAdapterConfig,
+  validators?: {
+    promptInjection?: PromptInjectionConfig;
+    secret?: SecretGuardConfig;
+  }
+): OpenClawGuardrailsMiddleware {
+  return new OpenClawGuardrailsMiddleware(config, validators);
+}
+
+/**
+ * Default export for convenience
+ */
+export default OpenClawGuardrailsMiddleware;
